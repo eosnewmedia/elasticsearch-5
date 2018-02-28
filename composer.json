@@ -1,0 +1,22 @@
+{
+  "name": "enm/elasticsearch-5",
+  "description": "Elasticsearch 5.x Client (low-level)",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Philipp Marien",
+      "email": "marien@eosnewmedia.de"
+    }
+  ],
+  "minimum-stability": "stable",
+  "autoload": {
+    "psr-4": {
+      "Enm\\Elasticsearch\\": "src"
+    }
+  },
+  "require": {
+    "elasticsearch/elasticsearch": "^5.0",
+    "ramsey/uuid": "^3.7"
+  }
+}
