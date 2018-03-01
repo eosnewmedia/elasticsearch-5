@@ -141,21 +141,22 @@ class DocumentManager implements DocumentManagerInterface
     public function createIndex(): void
     {
         foreach ($this->mappings as $type => $mapping) {
-            try {
-                $this->elasticsearch()->indices()->create(
-                    [
-                        'index' => $this->indexName($type),
-                        'body' => [
-                            'settings' => array_key_exists($type, $this->settings) ? $this->settings[$type] : [],
-                            'mappings' => [
-                                $type => $mapping
-                            ],
-                        ]
-                    ]
-                );
-            } catch (\Throwable $e) {
+            $body = [
+                'mappings' => [
+                    $type => (array)$mapping
+                ]
+            ];
 
+            if (array_key_exists($type, $this->settings)) {
+                $body['settings'] = (array)$this->settings[$type];
             }
+
+            $this->elasticsearch()->indices()->create(
+                [
+                    'index' => $this->indexName($type),
+                    'body' => $body
+                ]
+            );
         }
     }
 
