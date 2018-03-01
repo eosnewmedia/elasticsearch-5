@@ -16,6 +16,7 @@
     }
   },
   "require": {
+    "php": "^7.2",
     "elasticsearch/elasticsearch": "^5.0",
     "ramsey/uuid": "^3.7"
   }

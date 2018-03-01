@@ -145,11 +145,7 @@ class DocumentManager implements DocumentManagerInterface
                         'body' => [
                             'settings' => array_key_exists($class, $this->settings) ? $this->settings[$class] : [],
                             'mappings' => [
-                                $type => [
-                                    'properties' => [
-                                        $mapping
-                                    ]
-                                ]
+                                $type => [$mapping]
                             ],
                         ]
                     ]
