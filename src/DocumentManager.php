@@ -117,39 +117,38 @@ class DocumentManager implements DocumentManagerInterface
     }
 
     /**
-     * @param string $type
+     * @param string $className
      * @param array $mapping
      */
-    public function registerMapping(string $type, array $mapping): void
+    public function registerMapping(string $className, array $mapping): void
     {
-        $this->mappings[$type] = $mapping;
+        $this->mappings[$this->type($className)] = $mapping;
     }
 
     /**
-     * @param string $type
+     * @param string $className
      * @param array $settings
      */
-    public function registerSettings(string $type, array $settings): void
+    public function registerSettings(string $className, array $settings): void
     {
-        $this->settings[$type] = $settings;
+        $this->settings[$this->type($className)] = $settings;
     }
 
+    /**
+     * Creates the elasticsearch index
+     * @return void
+     */
     public function createIndex(): void
     {
-        foreach ($this->mappings as $class => $mapping) {
+        foreach ($this->mappings as $type => $mapping) {
             try {
-                $type = $this->type($class);
                 $this->elasticsearch()->indices()->create(
                     [
                         'index' => $this->indexName($type),
                         'body' => [
-                            'settings' => array_key_exists($class, $this->settings) ? $this->settings[$class] : [],
+                            'settings' => array_key_exists($type, $this->settings) ? $this->settings[$type] : [],
                             'mappings' => [
-                                $type => [
-                                    'properties' => [
-                                        $mapping
-                                    ]
-                                ]
+                                $type => $mapping
                             ],
                         ]
                     ]
@@ -160,6 +159,10 @@ class DocumentManager implements DocumentManagerInterface
         }
     }
 
+    /**
+     * Drops the elasticsearch index
+     * @return void
+     */
     public function dropIndex(): void
     {
         foreach ($this->mappings as $class => $mapping) {

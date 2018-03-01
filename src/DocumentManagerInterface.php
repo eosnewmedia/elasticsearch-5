@@ -19,16 +19,16 @@ interface DocumentManagerInterface
     public function createIndex(): void;
 
     /**
-     * @param string $type
+     * @param string $className
      * @param array $mapping
      */
-    public function registerMapping(string $type, array $mapping): void;
+    public function registerMapping(string $className, array $mapping): void;
 
     /**
-     * @param string $type
+     * @param string $className
      * @param array $settings
      */
-    public function registerSettings(string $type, array $settings): void;
+    public function registerSettings(string $className, array $settings): void;
 
     /**
      * Drops the elasticsearch index
