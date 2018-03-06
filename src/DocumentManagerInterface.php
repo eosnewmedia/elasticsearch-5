@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Enm\Elasticsearch;
 
 use Enm\Elasticsearch\Document\DocumentInterface;
+use Enm\Elasticsearch\Exception\DocumentManagerException;
 use Enm\Elasticsearch\Exception\DocumentNotFoundException;
 use Enm\Elasticsearch\Search\SearchInterface;
 
@@ -38,9 +39,26 @@ interface DocumentManagerInterface
 
     /**
      * @param DocumentInterface $document
+     * @throws DocumentManagerException
+     */
+    public function register(DocumentInterface $document): void;
+
+    /**
+     * @param string|null $className
+     * @param string|null $id
+     */
+    public function detach(string $className = null, string $id = null): void;
+
+    /**
+     * @param DocumentInterface $document
      * @return void
      */
     public function save(DocumentInterface $document): void;
+
+    /**
+     * Save all registered documents
+     */
+    public function saveAll(): void;
 
     /**
      * @param string $className
@@ -60,6 +78,7 @@ interface DocumentManagerInterface
 
     /**
      * @param DocumentInterface $document
+     * @throws DocumentNotFoundException
      */
     public function refreshDocument(DocumentInterface $document): void;
 
