@@ -6,7 +6,9 @@ namespace Enm\Elasticsearch;
 use Elasticsearch\Client;
 use Elasticsearch\ClientBuilder;
 use Enm\Elasticsearch\Document\DocumentInterface;
+use Enm\Elasticsearch\Exception\DocumentManagerException;
 use Enm\Elasticsearch\Exception\DocumentNotFoundException;
+use Enm\Elasticsearch\Exception\ElasticsearchException;
 use Enm\Elasticsearch\Exception\UnavailableException;
 use Enm\Elasticsearch\Search\SearchInterface;
 
@@ -36,14 +38,9 @@ class DocumentManager implements DocumentManagerInterface
     private $mappings = [];
 
     /**
-     * @var DocumentInterface[]
+     * @var DocumentInterface[][]
      */
     private $documents = [];
-
-    /**
-     * @var string[][]
-     */
-    private $collections = [];
 
     /**
      * @param string $index
@@ -84,18 +81,50 @@ class DocumentManager implements DocumentManagerInterface
 
     /**
      * @param DocumentInterface $document
-     * @return DocumentInterface
+     * @throws DocumentManagerException
      */
-    protected function register(DocumentInterface $document): DocumentInterface
+    public function register(DocumentInterface $document): void
     {
         if (!\array_key_exists(\get_class($document), $this->documents)) {
             $this->documents[\get_class($document)] = [];
         }
-        if (!\array_key_exists($document->getId(), (array)$this->documents[\get_class($document)])) {
-            $this->documents[\get_class($document)][$document->getId()] = $document;
+
+        $documentExists = \array_key_exists($document->getId(), $this->documents[\get_class($document)]);
+        if ($documentExists && $this->documents[\get_class($document)][$document->getId()] !== $document) {
+            throw new DocumentManagerException('Document with same id already registered.');
         }
 
-        return $this->documents[\get_class($document)][$document->getId()];
+        $this->documents[\get_class($document)][$document->getId()] = $document;
+    }
+
+    /**
+     * @param string|null $className
+     * @param string|null $id
+     */
+    public function detach(string $className = null, string $id = null): void
+    {
+        if (!$className) {
+            $this->documents = [];
+
+            return;
+        }
+
+        if (!$id) {
+            if (\array_key_exists($className, $this->documents)) {
+                unset($this->documents[$className]);
+            }
+            return;
+        }
+
+        if (!\array_key_exists($className, $this->documents)) {
+            return;
+        }
+
+        if (!\array_key_exists($id, $this->documents[$className])) {
+            return;
+        }
+
+        unset($this->documents[$className][$id]);
     }
 
     /**
@@ -109,7 +138,7 @@ class DocumentManager implements DocumentManagerInterface
         if (!\array_key_exists($className, $this->documents)) {
             throw new DocumentNotFoundException($className . ' ' . $id . ' not found.');
         }
-        if (!\array_key_exists($id, (array)$this->documents[$className])) {
+        if (!\array_key_exists($id, $this->documents[$className])) {
             throw new DocumentNotFoundException($className . ' ' . $id . ' not found.');
         }
 
@@ -173,10 +202,11 @@ class DocumentManager implements DocumentManagerInterface
 
     /**
      * @param DocumentInterface $document
+     * @throws ElasticsearchException
      */
     public function save(DocumentInterface $document): void
     {
-        $document = $this->register($document);
+        $this->register($document);
         $type = $this->type(\get_class($document));
         $this->elasticsearch()->index(
             [
@@ -186,6 +216,19 @@ class DocumentManager implements DocumentManagerInterface
                 'body' => $document->getStorable()
             ]
         );
+    }
+
+    /**
+     * Save all registered documents
+     * @throws ElasticsearchException
+     */
+    public function saveAll(): void
+    {
+        foreach ($this->documents as $documents) {
+            foreach ($documents as $document) {
+                $this->save($document);
+            }
+        }
     }
 
     /**
@@ -207,20 +250,7 @@ class DocumentManager implements DocumentManagerInterface
 
         }
 
-        foreach ($this->collections as $key => $collection) {
-            if (\in_array($id, $collection, true)) {
-                unset($this->collections[$key]);
-            }
-        }
-
-        if (!\array_key_exists($className, $this->documents)) {
-            return;
-        }
-        if (!\array_key_exists($id, (array)$this->documents[$className])) {
-            return;
-        }
-
-        unset($this->documents[$className][$id]);
+        $this->detach($className, $id);
     }
 
     /**
@@ -237,11 +267,7 @@ class DocumentManager implements DocumentManagerInterface
             try {
                 $response = $this->fetchDocument($className, $id);
 
-                if (!array_key_exists('_source', $response) || !$response['found']) {
-                    throw new \InvalidArgumentException('Not found.');
-                }
-
-                return $this->createDocument($className, $id, $response);
+                return $this->buildDocument($className, $id, $response);
             } catch (\Exception $e) {
                 throw new DocumentNotFoundException($className . ' ' . $id . ' not found.');
             }
@@ -250,18 +276,19 @@ class DocumentManager implements DocumentManagerInterface
 
     /**
      * @param DocumentInterface $document
-     * @throws DocumentNotFoundException
+     * @throws DocumentNotFoundException|DocumentManagerException
      */
     public function refreshDocument(DocumentInterface $document): void
     {
         try {
-            $response = $this->fetchDocument(\get_class($document), $document->getId());
-
-            if (!array_key_exists('_source', $response) || !$response['found']) {
-                throw new \InvalidArgumentException('Not found.');
+            $retrieved = $this->retrieve(\get_class($document), $document->getId());
+            if ($retrieved !== $document) {
+                throw new DocumentManagerException('Document is not managed by this document manager!');
             }
 
-            $document->buildFromSource($response['_source']);
+            $response = $this->fetchDocument(\get_class($document), $document->getId());
+
+            $this->buildDocument(\get_class($document), $document->getId(), $response);
         } catch (\Exception $e) {
             throw new DocumentNotFoundException(\get_class($document) . ' ' . $document->getId() . ' not found.');
         }
@@ -274,47 +301,33 @@ class DocumentManager implements DocumentManagerInterface
      */
     public function documents(string $className, SearchInterface $search): array
     {
-        $collection = sha1($className . '::' . serialize($search));
-        if (!array_key_exists($collection, $this->collections)) {
-            $this->collections[$collection] = [];
+        $body = [];
+        $body['from'] = $search->getFrom();
+        $body['size'] = $search->getSize();
+        if (\count($search->getQuery()) > 0) {
+            $body['query'] = $search->getQuery();
+        }
+        if (\count($search->getSorting()) > 0) {
+            $body['sort'] = $search->getSorting();
+        }
 
-            $body = [];
-            $body['from'] = $search->getFrom();
-            $body['size'] = $search->getSize();
-            if (\count($search->getQuery()) > 0) {
-                $body['query'] = $search->getQuery();
-            }
-            if (\count($search->getSorting()) > 0) {
-                $body['sort'] = $search->getSorting();
-            }
+        $type = $this->type($className);
+        $response = $this->elasticsearch()->search([
+                'index' => $this->indexName($type),
+                'type' => $type,
+                'body' => $body
+            ]
+        );
 
-            $type = $this->type($className);
-            $response = $this->elasticsearch()->search([
-                    'index' => $this->indexName($type),
-                    'type' => $type,
-                    'body' => $body
-                ]
-            );
-
-            if ($response['hits']['total'] === 0) {
-                return [];
-            }
-
-            foreach ((array)$response['hits']['hits'] as $hit) {
-                try {
-                    $this->createDocument($className, $hit['_id'], $hit);
-                    $this->collections[$collection][] = $hit['_id'];
-                } catch (\Exception $e) {
-
-                }
-            }
+        if ($response['hits']['total'] === 0) {
+            return [];
         }
 
         $documents = [];
-        foreach ($this->collections[$collection] as $id) {
+        foreach ((array)$response['hits']['hits'] as $hit) {
             try {
-                $documents[] = $this->retrieve($className, $id);
-            } catch (DocumentNotFoundException $e) {
+                $documents[] = $this->buildDocument($className, $hit['_id'], $hit);
+            } catch (\Exception $e) {
 
             }
         }
@@ -352,14 +365,20 @@ class DocumentManager implements DocumentManagerInterface
      * @param $data
      *
      * @return DocumentInterface
-     * @throws \InvalidArgumentException
+     * @throws DocumentManagerException|DocumentNotFoundException
      */
-    protected function createDocument(string $className, string $id, $data): DocumentInterface
+    protected function buildDocument(string $className, string $id, $data): DocumentInterface
     {
-        /** @var DocumentInterface $document */
-        $document = new $className($id);
-        /** @var DocumentInterface $document */
-        $document = $this->register($document);
+        try {
+            $document = $this->retrieve($className, $id);
+        } catch (\Exception $e) {
+            /** @var DocumentInterface $document */
+            $document = new $className($id);
+            $this->register($document);
+        }
+        if (!array_key_exists('_source', $data)) {
+            throw new DocumentNotFoundException('Invalid data: "_source" not available!');
+        }
         $document->buildFromSource($data['_source']);
 
         return $document;
