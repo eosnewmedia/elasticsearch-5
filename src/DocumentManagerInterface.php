@@ -71,16 +71,18 @@ interface DocumentManagerInterface
     /**
      * @param string $className
      * @param string $id
+     * @param int $retriesOnError
      * @return DocumentInterface
      * @throws DocumentNotFoundException
      */
-    public function document(string $className, string $id): DocumentInterface;
+    public function document(string $className, string $id, int $retriesOnError = 3): DocumentInterface;
 
     /**
      * @param DocumentInterface $document
+     * @param int $retriesOnError
      * @throws DocumentNotFoundException
      */
-    public function refreshDocument(DocumentInterface $document): void;
+    public function refreshDocument(DocumentInterface $document, int $retriesOnError = 3): void;
 
     /**
      * @param string $className

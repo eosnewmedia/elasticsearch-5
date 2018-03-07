@@ -256,16 +256,17 @@ class DocumentManager implements DocumentManagerInterface
     /**
      * @param string $className
      * @param string $id
+     * @param int $retriesOnError
      * @return DocumentInterface
      * @throws DocumentNotFoundException
      */
-    public function document(string $className, string $id): DocumentInterface
+    public function document(string $className, string $id, int $retriesOnError = 3): DocumentInterface
     {
         try {
             return $this->retrieve($className, $id);
         } catch (DocumentNotFoundException $e) {
             try {
-                $response = $this->fetchDocument($className, $id);
+                $response = $this->fetchDocument($className, $id, $retriesOnError);
 
                 return $this->buildDocument($className, $id, $response);
             } catch (\Exception $e) {
@@ -276,9 +277,10 @@ class DocumentManager implements DocumentManagerInterface
 
     /**
      * @param DocumentInterface $document
+     * @param int $retriesOnError
      * @throws DocumentNotFoundException|DocumentManagerException
      */
-    public function refreshDocument(DocumentInterface $document): void
+    public function refreshDocument(DocumentInterface $document, int $retriesOnError = 3): void
     {
         try {
             $retrieved = $this->retrieve(\get_class($document), $document->getId());
@@ -286,7 +288,7 @@ class DocumentManager implements DocumentManagerInterface
                 throw new DocumentManagerException('Document is not managed by this document manager!');
             }
 
-            $response = $this->fetchDocument(\get_class($document), $document->getId());
+            $response = $this->fetchDocument(\get_class($document), $document->getId(), $retriesOnError);
 
             $this->buildDocument(\get_class($document), $document->getId(), $response);
         } catch (\Exception $e) {
@@ -387,13 +389,14 @@ class DocumentManager implements DocumentManagerInterface
     /**
      * @param string $className
      * @param string $id
+     * @param int $retriesOnError
      * @return array
      * @throws UnavailableException
      */
-    protected function fetchDocument(string $className, string $id): array
+    protected function fetchDocument(string $className, string $id, int $retriesOnError): array
     {
-        // try 3 times, because elasticsearch may be down for short times...
-        for ($i = 0; $i < 3; $i++) {
+        // try multiple times, because elasticsearch may be down for short times...
+        for ($i = 0; $i <= $retriesOnError; $i++) {
             try {
                 $type = $this->type($className);
                 $response = $this->elasticsearch()->get(
@@ -406,7 +409,7 @@ class DocumentManager implements DocumentManagerInterface
 
                 return $response;
             } catch (\Exception $e) {
-                sleep(($i + 1) * $i);
+                sleep(($i > 0 ? $i : 1) * $i);
             }
         }
 
