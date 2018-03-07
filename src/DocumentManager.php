@@ -164,12 +164,15 @@ class DocumentManager implements DocumentManagerInterface
     }
 
     /**
-     * Creates the elasticsearch index
-     * @return void
+     * @param string|null $className
      */
-    public function createIndex(): void
+    public function createIndex(string $className = null): void
     {
         foreach ($this->mappings as $type => $mapping) {
+            if ($className !== null && $type !== $this->type($className)) {
+                continue;
+            }
+
             $body = [
                 'mappings' => [
                     $type => (array)$mapping
@@ -190,13 +193,16 @@ class DocumentManager implements DocumentManagerInterface
     }
 
     /**
-     * Drops the elasticsearch index
-     * @return void
+     * @param string|null $className
      */
-    public function dropIndex(): void
+    public function dropIndex(string $className = null): void
     {
-        foreach ($this->mappings as $class => $mapping) {
-            $this->elasticsearch()->indices()->delete(['index' => $this->indexName($this->type($class))]);
+        foreach ($this->mappings as $type => $mapping) {
+            if ($className !== null && $type !== $this->type($className)) {
+                continue;
+            }
+
+            $this->elasticsearch()->indices()->delete(['index' => $this->indexName($this->type($type))]);
         }
     }
 

@@ -15,9 +15,10 @@ interface DocumentManagerInterface
 {
     /**
      * Creates the elasticsearch index
+     * @param string|null $className
      * @return void
      */
-    public function createIndex(): void;
+    public function createIndex(string $className = null): void;
 
     /**
      * @param string $className
@@ -33,9 +34,10 @@ interface DocumentManagerInterface
 
     /**
      * Drops the elasticsearch index
+     * @param string|null $className
      * @return void
      */
-    public function dropIndex(): void;
+    public function dropIndex(string $className = null): void;
 
     /**
      * @param DocumentInterface $document
